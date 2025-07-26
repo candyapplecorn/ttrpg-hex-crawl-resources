@@ -2,10 +2,11 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
+  base: './',         // ← use relative paths (fixes GitHub Pages 404s)
   plugins: [react()],
-  root: '.',              // where your src/index.html lives
+  root: '.',
   build: {
-    outDir: '../docs',         // relative to the root of the repo
-    emptyOutDir: true,         // clear out docs/ on each build
+    outDir: '../docs',
+    emptyOutDir: true,
   },
 })
