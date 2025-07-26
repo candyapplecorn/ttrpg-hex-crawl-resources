@@ -33,7 +33,8 @@ function overlayHexGrid(
     height: number,
     ppm: number,
     miles: number,
-    color: string
+    color: string,
+    polygons: Point[][] = []
 ) {
     const hexDiameter = ppm * miles;
     const hexRadius = hexDiameter / 2;
@@ -60,9 +61,9 @@ function overlayHexGrid(
         // inner loop = each column
         while (x < width + hSpacing * 2) {
             halfHeightOffsetCounter += 1;
+            const points: Point[] = []
 
             // draw one hexagon
-            ctx.beginPath();
             for (let i = 0; i < 6; i++) {
                 // flat‑top: start at angle=0° (pointing right) and go CCW 60° steps
                 const theta = (i * 60) * (Math.PI / 180);
@@ -75,11 +76,22 @@ function overlayHexGrid(
                     py += hexHeight / 2;
                 }
 
-                if (i === 0) ctx.moveTo(px, py);
-                else ctx.lineTo(px, py);
+                points.push({ x: px, y: py });
             }
-            ctx.closePath();
-            ctx.stroke();
+
+            const anyPointsIntersectAnyPolygon: boolean = polygons.some(polygon =>
+                points.some(pt => pointInPolygon(pt, polygon))
+            );
+
+            if (!anyPointsIntersectAnyPolygon) {
+                ctx.beginPath();
+                points.forEach((pt: Point, i: number) => {
+                    if (i === 0) ctx.moveTo(pt.x, pt.y);
+                    else ctx.lineTo(pt.x, pt.y);
+                })
+                ctx.closePath();
+                ctx.stroke();
+            }
 
             x += hSpacing;
         }
@@ -141,14 +153,14 @@ function App() {
             ctx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
             ctx.drawImage(img, PADDING, PADDING);
             // overlay hex grid
-            overlayHexGrid(ctx, img.width, img.height, pixelsPerMile, hexMiles, outlineColor);
-            // drawPolygon(ctx);
+            overlayHexGrid(ctx, img.width, img.height, pixelsPerMile, hexMiles, outlineColor, polygons);
+            if (tool === Tool.Draw) drawPolygons();
             // update download link
             const url = mapCanvas.toDataURL('image/png');
             setDownloadUrl(url);
         };
         img.src = URL.createObjectURL(imageFile);
-    };
+    }
 
     // Draw the uploaded image on canvas with padding
     React.useEffect(handleGenerate, [imageFile]);
@@ -260,9 +272,16 @@ function App() {
                     />
                 </label>
             </div>
-            <button style={{marginTop: 20}} onClick={handleGenerate}>
-                Generate Overlay
-            </button>
+            <div style={{ display: "flex"}}>
+                <button style={{marginTop: 20}} onClick={() => { handleGenerate(); }} disabled={vertices.length > 0}>
+                    Generate Overlay
+                </button>
+                {vertices.length > 0 && (
+                    <button style={{marginTop: 20}} onClick={() => { finalize(); }}>
+                        Finalize Polygon
+                    </button>
+                )}
+            </div>
 
             {/* Toolbar */}
             <div style={{display: 'flex', alignItems: 'center', marginBottom: 10}}>
