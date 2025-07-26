@@ -10,6 +10,8 @@ enum Tool {
 
 const PADDING = 100; // pixels of canvas padding around image
 
+interface Point { x: number; y: number }
+
 function overlayHexGrid(
     ctx: CanvasRenderingContext2D,
     width: number,
@@ -79,6 +81,7 @@ function App() {
     const [hexMiles, setHexMiles] = useState<number>(6);
     const [outlineColor, setOutlineColor] = useState<string>('black');
     const [downloadUrl, setDownloadUrl] = useState<string>('');
+    const [vertices, setVertices] = useState<Point[]>([]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files || e.target.files.length === 0) return;
@@ -100,6 +103,7 @@ function App() {
             ctx.drawImage(img, PADDING, PADDING);
             // overlay hex grid
             overlayHexGrid(ctx, img.width, img.height, pixelsPerMile, hexMiles, outlineColor);
+            drawPolygon(ctx);
             // update download link
             const url = canvas.toDataURL('image/png');
             setDownloadUrl(url);
@@ -108,7 +112,43 @@ function App() {
     };
 
     // Draw the uploaded image on canvas with padding
-    React.useEffect(handleGenerate, [imageFile]);
+    React.useEffect(handleGenerate, [imageFile, vertices]);
+
+    // Draw filled polygon when 3+ vertices
+    const drawPolygon = (ctx: CanvasRenderingContext2D) => {
+        if (vertices.length < 1) return;
+
+        // draw marker for each vertex
+        ctx.fillStyle = 'red';
+        vertices.forEach(({ x, y }) => {
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        if (vertices.length >= 3) {
+            ctx.fillStyle = 'rgba(255,0,0,0.3)';
+            ctx.beginPath();
+            vertices.forEach((pt, i) => {
+                if (i === 0) ctx.moveTo(pt.x, pt.y);
+                else ctx.lineTo(pt.x, pt.y);
+            });
+            ctx.closePath();
+            ctx.fill();
+        }
+    };
+
+    // Handle canvas clicks for Draw tool with proper scaling
+    const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        if (tool !== Tool.Draw || !canvasRef.current) return;
+        const canvas = canvasRef.current;
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x = (e.clientX - rect.left) * scaleX;
+        const y = (e.clientY - rect.top) * scaleY;
+        setVertices(prev => [...prev, { x, y }]);
+    };
 
     return (
         <div style={{padding: 20, fontFamily: 'sans-serif'}}>
@@ -208,6 +248,7 @@ function App() {
             ) : (
                 <canvas
                     ref={canvasRef}
+                    onClick={handleCanvasClick}
                     style={{
                         border: '1px solid #ccc',
                         display: 'block',
