@@ -333,39 +333,39 @@ function App() {
     return (
         <div style={{padding: 20, fontFamily: 'sans-serif'}}>
             <h1>Overlay {Hex} Tool</h1>
-            <input type="file" accept="image/*" onChange={handleFileChange}/>
-            <div style={{marginTop: 10}}>
-                <label>
-                    Pixels per mile:{' '}
-                    <input
-                        type="number"
-                        value={pixelsPerMile}
-                        onChange={e => setPixelsPerMile(parseFloat(e.target.value))}
-                    />
-                </label>
-            </div>
-            <div style={{marginTop: 10}}>
-                <label>
-                    Hex radius (miles):{' '}
-                    <input
-                        type="number"
-                        value={hexMiles}
-                        onChange={e => setHexMiles(parseFloat(e.target.value))}
-                    />
-                </label>
-            </div>
-            <div style={{marginTop: 10}}>
-                <label>
-                    Outline color:{' '}
-                    <input
-                        type="text"
-                        value={outlineColor}
-                        onChange={e => setOutlineColor(e.target.value)}
-                    />
-                </label>
-            </div>
-            <div style={{ display: "flex"}}>
-                <button style={{marginTop: 20}} onClick={() => { handleGenerate(); }} disabled={vertices.length > 0}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', marginTop: 10 }}>
+                <input type="file" accept="image/*" onChange={handleFileChange}/>
+                <div style={{marginTop: 10}}>
+                    <label>
+                        Pixels per mile:{' '}
+                        <input
+                            type="number"
+                            value={pixelsPerMile}
+                            onChange={e => setPixelsPerMile(parseFloat(e.target.value))}
+                        />
+                    </label>
+                </div>
+                <div style={{marginTop: 10}}>
+                    <label>
+                        Hex radius (miles):{' '}
+                        <input
+                            type="number"
+                            value={hexMiles}
+                            onChange={e => setHexMiles(parseFloat(e.target.value))}
+                        />
+                    </label>
+                </div>
+                <div style={{marginTop: 10}}>
+                    <label>
+                        Outline color:{' '}
+                        <input
+                            type="text"
+                            value={outlineColor}
+                            onChange={e => setOutlineColor(e.target.value)}
+                        />
+                    </label>
+                </div>
+                <button style={{marginTop: 20}} onClick={() => { handleGenerate(); }} disabled={(vertices.length > 0) || !imageFile}>
                     Generate {Hex}s
                 </button>
                 {vertices.length > 0 && (
@@ -378,6 +378,7 @@ function App() {
             {/* Toolbar */}
             <div style={{display: 'flex', alignItems: 'center', marginBottom: 10}}>
                 <button
+                    disabled={polygons.length === 0}
                     title={`Invert ${Poly}`}
                     onClick={() => changeTool(Tool.Select)}
                     style={{
@@ -402,6 +403,7 @@ function App() {
                     <FaDrawPolygon/>
                 </button>
                 <button
+                    disabled={polygons.length === 0}
                     title={`Delete ${Poly}`}
                     onClick={() => changeTool(Tool.Delete)}
                     style={{
