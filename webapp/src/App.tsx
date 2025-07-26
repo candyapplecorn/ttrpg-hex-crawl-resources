@@ -34,7 +34,8 @@ function overlayHexGrid(
     ppm: number,
     miles: number,
     color: string,
-    polygons: Point[][] = []
+    polygonsToSkip: Point[][] = [],
+    polygonsToInclude: Point[][] = []
 ) {
     const hexDiameter = ppm * miles;
     const hexRadius = hexDiameter / 2;
@@ -79,11 +80,17 @@ function overlayHexGrid(
                 points.push({ x: px, y: py });
             }
 
-            const anyPointsIntersectAnyPolygon: boolean = polygons.some(polygon =>
-                points.some(pt => pointInPolygon(pt, polygon))
-            );
+            const shouldDrawHex = points.every(pt => {
+                if (polygonsToSkip.some(polygon => pointInPolygon(pt, polygon))) {
+                    if (polygonsToInclude.some(polygon => pointInPolygon(pt, polygon))) {
+                        return true;
+                    }
+                    return false;
+                }
+                return true;
+            });
 
-            if (!anyPointsIntersectAnyPolygon) {
+            if (shouldDrawHex) {
                 ctx.beginPath();
                 points.forEach((pt: Point, i: number) => {
                     if (i === 0) ctx.moveTo(pt.x, pt.y);
@@ -170,7 +177,7 @@ function App() {
             ctx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
             ctx.drawImage(img, PADDING, PADDING);
             // overlay hex grid
-            overlayHexGrid(ctx, img.width, img.height, pixelsPerMile, hexMiles, outlineColor, polygons);
+            overlayHexGrid(ctx, img.width, img.height, pixelsPerMile, hexMiles, outlineColor, polygons, selectedPolygons ?? []);
             if (tool === Tool.Draw) drawPolygons();
             // update download link
             const url = mapCanvas.toDataURL('image/png');
@@ -236,7 +243,13 @@ function App() {
 
         if (tool === Tool.Delete) {
             // remove polygon under click
-            setPolygons(prev => prev.filter(poly => !pointInPolygon({ x, y }, poly)));
+            const newPolygons = polygons.filter(poly => !pointInPolygon({ x, y }, poly));
+            const newSelectedPolygons = selectedPolygons ? selectedPolygons.filter(poly => !pointInPolygon({ x, y }, poly)) : null;
+            setPolygons(newPolygons);
+            setSelectedPolygons(newSelectedPolygons);
+
+            drawPolygons(selectionCanvasRef, newSelectedPolygons ?? [], [], 'rgba(0, 0, 255, 0.3)'); // Draw selected polygons in blue
+            drawPolygons(polyCanvasRef, newPolygons, selectedPolygons);
         }
         if (tool === Tool.Draw) {
             setVertices(prev => [...prev, { x, y }]);
@@ -324,7 +337,7 @@ function App() {
             {/* Toolbar */}
             <div style={{display: 'flex', alignItems: 'center', marginBottom: 10}}>
                 <button
-                    title="Select mode (Currently doesn't actually do anything...)"
+                    title="Select mode - Selected polygons will be highlighted and include hexes"
                     onClick={() => changeTool(Tool.Select)}
                     style={{
                         background: tool === Tool.Select ? '#ddd' : 'transparent',
@@ -336,7 +349,7 @@ function App() {
                     <FaMousePointer/>
                 </button>
                 <button
-                    title="Draw mode"
+                    title="Draw mode - Selected polygons will stop hexagons from being drawn inside them"
                     onClick={() => changeTool(Tool.Draw)}
                     style={{
                         background: tool === Tool.Draw ? '#ddd' : 'transparent',
@@ -348,7 +361,7 @@ function App() {
                     <FaDrawPolygon/>
                 </button>
                 <button
-                    title="Delete mode"
+                    title="Delete mode - Click a hexagon to remove it from the overlay"
                     onClick={() => changeTool(Tool.Delete)}
                     style={{
                         background: tool === Tool.Delete ? '#ddd' : 'transparent',
