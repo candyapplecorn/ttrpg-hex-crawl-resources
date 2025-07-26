@@ -1,4 +1,4 @@
-import React, {useEffect, useRef, useState} from 'react';
+import React, {RefObject, useEffect, useRef, useState} from 'react';
 import {FaCheck, FaDrawPolygon, FaMousePointer, FaTrash} from 'react-icons/fa';
 
 // Tool modes
@@ -105,12 +105,14 @@ function App() {
     const [tool, setTool] = useState<Tool>(Tool.Draw);
     const mapCanvasRef = useRef<HTMLCanvasElement>(null);
     const polyCanvasRef = useRef<HTMLCanvasElement>(null);
+    const selectionCanvasRef = useRef<HTMLCanvasElement>(null);
     const [pixelsPerMile, setPixelsPerMile] = useState<number>(22.56);
     const [hexMiles, setHexMiles] = useState<number>(6);
     const [outlineColor, setOutlineColor] = useState<string>('black');
     const [downloadUrl, setDownloadUrl] = useState<string>('');
     const [vertices, setVertices] = useState<Point[]>([]);
     const [polygons, setPolygons] = useState<Point[][]>([]);
+    const [selectedPolygons, setSelectedPolygons] = useState<Point[][] | null>(null);
 
     // finalize current drawing into polygons if >=3 points
     const finalize = () => {
@@ -125,8 +127,12 @@ function App() {
         if (tool === newTool) {
             if (newTool === Tool.Draw) finalize();
             setTool(null);
+            clearCanvas(selectionCanvasRef);
+            clearCanvas(polyCanvasRef);
         } else {
             if (tool === Tool.Draw && newTool !== Tool.Draw) finalize();
+            drawPolygons(polyCanvasRef, polygons, selectedPolygons);
+            drawPolygons(selectionCanvasRef, selectedPolygons || [], [], 'rgba(0, 0, 255, 0.3)'); // Draw selected polygons in blue
             setTool(newTool);
         }
     }
@@ -137,10 +143,19 @@ function App() {
         setDownloadUrl('');
     };
 
+    function clearCanvas(canvasRef: RefObject<HTMLCanvasElement>) {
+        if (!canvasRef.current) return;
+        const ctx = canvasRef.current.getContext('2d');
+        if (ctx) {
+            ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        }
+    }
+
     function handleGenerate() {
-        if (!imageFile || !mapCanvasRef.current || !polyCanvasRef.current) return;
+        if (!imageFile || !mapCanvasRef.current || !polyCanvasRef.current || !selectionCanvasRef.current) return;
         const mapCanvas = mapCanvasRef.current;
         const polyCanvas = polyCanvasRef.current;
+        const selectionCanvas = selectionCanvasRef.current;
         const ctx = mapCanvas.getContext('2d');
         if (!ctx) return;
 
@@ -150,6 +165,8 @@ function App() {
             mapCanvas.height = img.height + PADDING * 2;
             polyCanvas.width = mapCanvas.width;
             polyCanvas.height = mapCanvas.height;
+            selectionCanvas.width = mapCanvas.width;
+            selectionCanvas.height = mapCanvas.height;
             ctx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
             ctx.drawImage(img, PADDING, PADDING);
             // overlay hex grid
@@ -166,20 +183,23 @@ function App() {
     React.useEffect(handleGenerate, [imageFile]);
 
     // Draw vertices and polygon on polygon canvas when vertices change
-    function drawPolygons() {
-        if (!polyCanvasRef.current) return;
-        const canvas = polyCanvasRef.current;
+    function drawPolygons(canvasRef: RefObject<HTMLCanvasElement> = polyCanvasRef, listOfPolygons: Point[][] = polygons, polygonsToOmit: Point[][] | null = selectedPolygons, color: string | null = null) {
+        if (!canvasRef.current) return;
+        const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        [vertices, ...polygons].forEach((polygon, index, polygons) => {
-            drawPolygon(ctx, polygon, index === 0  ? 'rgba(255,0,0,0.3)' : 'rgba(255,0,0,0.15)'); // Current one (vertices) is darker so it's easier to see while editing
+        [vertices, ...listOfPolygons].forEach((polygon, index, polygons) => {
+            // if the polygon isn't inside the selected polygons, draw it
+            if (polygonsToOmit && polygonsToOmit.includes(polygon)) return;
+            const fillColor = color || (index === 0 ? 'rgba(255,0,0,0.3)' : 'rgba(255,0,0,0.15)');
+            drawPolygon(ctx, polygon, fillColor); // Current one (vertices) is darker so it's easier to see while editing
         })
     }
 
-    useEffect(drawPolygons, [vertices, polygons]);
+    useEffect(() => drawPolygons(polyCanvasRef, polygons, selectedPolygons), [vertices, polygons, selectedPolygons]);
 
     // Draw filled polygon when 3+ vertices
     const drawPolygon = (ctx: CanvasRenderingContext2D, polygon: Point[], color: string = 'rgba(255,0,0,0.3)') => {
@@ -213,17 +233,35 @@ function App() {
         const scaleY = canvas.height / rect.height;
         const x = (e.clientX - rect.left) * scaleX;
         const y = (e.clientY - rect.top) * scaleY;
+
         if (tool === Tool.Delete) {
             // remove polygon under click
             setPolygons(prev => prev.filter(poly => !pointInPolygon({ x, y }, poly)));
-            return;
         }
         if (tool === Tool.Draw) {
             setVertices(prev => [...prev, { x, y }]);
-            return;
         }
         if (tool === Tool.Select) {
-            // no-op for now or could highlight
+            // See if any of the polygons are clicked.
+            const clickedPolygons = polygons.filter (poly => pointInPolygon({ x, y }, poly));
+            // add the polygon to the list of selected polygons
+            const copyOfSelectedPolygons = selectedPolygons ? [...selectedPolygons] : [];
+            clickedPolygons.forEach(poly => {
+                if (!copyOfSelectedPolygons?.includes(poly)) {
+                    copyOfSelectedPolygons.push(poly);
+                } else {
+                    // if the polygon was already selected, remove it
+                    const index = copyOfSelectedPolygons.indexOf(poly);
+                    if (index > -1) {
+                        copyOfSelectedPolygons.splice(index, 1);
+                    }
+                }
+            })
+
+
+            setSelectedPolygons(copyOfSelectedPolygons.length > 0 ? copyOfSelectedPolygons : null);
+            drawPolygons(selectionCanvasRef, copyOfSelectedPolygons, [], 'rgba(0, 0, 255, 0.3)'); // Draw selected polygons in blue
+            drawPolygons(polyCanvasRef, polygons, selectedPolygons);
         }
     };
 
@@ -286,7 +324,7 @@ function App() {
             {/* Toolbar */}
             <div style={{display: 'flex', alignItems: 'center', marginBottom: 10}}>
                 <button
-                    title="Select mode"
+                    title="Select mode (Currently doesn't actually do anything...)"
                     onClick={() => changeTool(Tool.Select)}
                     style={{
                         background: tool === Tool.Select ? '#ddd' : 'transparent',
@@ -329,6 +367,10 @@ function App() {
                     <canvas ref={mapCanvasRef} style={{ display: 'block', maxWidth: "100%" }} />
                     <canvas
                         ref={polyCanvasRef}
+                        style={{ position: 'absolute', top: 0, left: 0, cursor: tool === Tool.Draw ? 'crosshair' : 'default', maxWidth: "100%" }}
+                    />
+                    <canvas
+                        ref={selectionCanvasRef}
                         onClick={handleCanvasClick}
                         style={{ position: 'absolute', top: 0, left: 0, cursor: tool === Tool.Draw ? 'crosshair' : 'default', maxWidth: "100%" }}
                     />
