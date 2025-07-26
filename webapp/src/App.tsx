@@ -108,13 +108,16 @@ function App() {
         }
     };
 
-    // handle tool change
+    // toggle tool and finalize if leaving draw
     const changeTool = (newTool: Tool) => {
-        if (tool === Tool.Draw && newTool !== Tool.Draw) {
-            finalize();
+        if (tool === newTool) {
+            if (newTool === Tool.Draw) finalize();
+            setTool(null);
+        } else {
+            if (tool === Tool.Draw && newTool !== Tool.Draw) finalize();
+            setTool(newTool);
         }
-        setTool(newTool);
-    };
+    }
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files || e.target.files.length === 0) return;
@@ -159,15 +162,15 @@ function App() {
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        [...polygons, vertices].forEach(polygon => {
-            drawPolygon(ctx, polygon);
+        [vertices, ...polygons].forEach((polygon, index, polygons) => {
+            drawPolygon(ctx, polygon, index === 0  ? 'rgba(255,0,0,0.3)' : 'rgba(255,0,0,0.15)'); // Current one (vertices) is darker so it's easier to see while editing
         })
     }
 
     useEffect(drawPolygons, [vertices, polygons]);
 
     // Draw filled polygon when 3+ vertices
-    const drawPolygon = (ctx: CanvasRenderingContext2D, polygon: Point[]) => {
+    const drawPolygon = (ctx: CanvasRenderingContext2D, polygon: Point[], color: string = 'rgba(255,0,0,0.3)') => {
         if (polygon.length < 1) return;
 
         // draw marker for each vertex
@@ -179,7 +182,7 @@ function App() {
         });
 
         if (polygon.length >= 3) {
-            ctx.fillStyle = 'rgba(255,0,0,0.3)';
+            ctx.fillStyle = color;
             ctx.beginPath();
             polygon.forEach((pt, i) => {
                 if (i === 0) ctx.moveTo(pt.x, pt.y);
