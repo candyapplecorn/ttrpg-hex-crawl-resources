@@ -1,5 +1,5 @@
 import React, {useEffect, useRef, useState} from 'react';
-import {FaDrawPolygon, FaMousePointer, FaTrash} from 'react-icons/fa';
+import {FaCheck, FaDrawPolygon, FaMousePointer, FaTrash} from 'react-icons/fa';
 
 // Tool modes
 enum Tool {
@@ -215,6 +215,17 @@ function App() {
         }
     };
 
+    // compute hover position for finalize button (scaled to CSS)
+    const hoverPos = React.useMemo(() => {
+        if (vertices.length < 3 || !polyCanvasRef.current) return null;
+        const xs = vertices.map(v=>v.x), ys = vertices.map(v=>v.y);
+        const minX = Math.min(...xs), minY = Math.min(...ys);
+        const offset = 100;
+        const rect = polyCanvasRef.current.getBoundingClientRect();
+        const scale = rect.width / polyCanvasRef.current.width;
+        return { left: (minX - offset) * scale, top: (minY - offset) * scale };
+    }, [vertices]);
+
     return (
         <div style={{padding: 20, fontFamily: 'sans-serif'}}>
             <h1>Create Hex Overlay</h1>
@@ -302,6 +313,11 @@ function App() {
                         onClick={handleCanvasClick}
                         style={{ position: 'absolute', top: 0, left: 0, cursor: tool === Tool.Draw ? 'crosshair' : 'default', maxWidth: "100%" }}
                     />
+                    {hoverPos && tool===Tool.Draw && (
+                        <div onClick={finalize} title="Complete polygon" style={{position:'absolute',left:hoverPos.left,top:hoverPos.top,background:'#000',border:'1px solid #ccc',borderRadius:4,padding:4,cursor:'pointer',zIndex:10}}>
+                            <FaCheck />
+                        </div>
+                    )}
                 </div>
             ) : (
                 <div style={{ width: 400, height: 300, border: '2px dashed #aaa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
