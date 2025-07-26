@@ -12,6 +12,9 @@ const PADDING = 100; // pixels of canvas padding around image
 
 interface Point { x: number; y: number }
 
+const Poly: "Polygon" = "Polygon";
+const Hex: "Hexagon" = "Hexagon";
+
 // point-in-polygon test (ray-casting)
 function pointInPolygon(point: Point, vs: Point[]) {
     const { x, y } = point;
@@ -125,9 +128,9 @@ function App() {
     const finalize = () => {
         if (vertices.length >= 3) {
             setPolygons(prev => [...prev, vertices]);
-            setVertices([]);
         }
-    };
+        setVertices([]);
+    }
 
     // toggle tool and finalize if leaving draw
     const changeTool = (newTool: Tool) => {
@@ -191,7 +194,7 @@ function App() {
 
     // Draw vertices and polygon on polygon canvas when vertices change
     function drawPolygons(canvasRef: RefObject<HTMLCanvasElement> = polyCanvasRef, listOfPolygons: Point[][] = polygons, polygonsToOmit: Point[][] | null = selectedPolygons, color: string | null = null) {
-        if (!canvasRef.current) return;
+        if (!canvasRef.current || tool === null) return;
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
@@ -206,7 +209,7 @@ function App() {
         })
     }
 
-    useEffect(() => drawPolygons(polyCanvasRef, polygons, selectedPolygons), [vertices, polygons, selectedPolygons]);
+    useEffect(() => drawPolygons(polyCanvasRef, polygons, selectedPolygons, null), [vertices, polygons, selectedPolygons, tool]);
 
     // Draw filled polygon when 3+ vertices
     const drawPolygon = (ctx: CanvasRenderingContext2D, polygon: Point[], color: string = 'rgba(255,0,0,0.3)') => {
@@ -291,7 +294,7 @@ function App() {
 
     return (
         <div style={{padding: 20, fontFamily: 'sans-serif'}}>
-            <h1>Create Hex Overlay</h1>
+            <h1>Overlay {Hex} Tool</h1>
             <input type="file" accept="image/*" onChange={handleFileChange}/>
             <div style={{marginTop: 10}}>
                 <label>
@@ -325,11 +328,11 @@ function App() {
             </div>
             <div style={{ display: "flex"}}>
                 <button style={{marginTop: 20}} onClick={() => { handleGenerate(); }} disabled={vertices.length > 0}>
-                    Generate Overlay
+                    Generate {Hex}s
                 </button>
                 {vertices.length > 0 && (
                     <button style={{marginTop: 20}} onClick={() => { finalize(); }}>
-                        Finalize Polygon
+                        Finalize {Poly}
                     </button>
                 )}
             </div>
@@ -337,7 +340,7 @@ function App() {
             {/* Toolbar */}
             <div style={{display: 'flex', alignItems: 'center', marginBottom: 10}}>
                 <button
-                    title="Select mode - Selected polygons will be highlighted and include hexes"
+                    title={`Invert ${Poly}`}
                     onClick={() => changeTool(Tool.Select)}
                     style={{
                         background: tool === Tool.Select ? '#ddd' : 'transparent',
@@ -349,7 +352,7 @@ function App() {
                     <FaMousePointer/>
                 </button>
                 <button
-                    title="Draw mode - Selected polygons will stop hexagons from being drawn inside them"
+                    title={`Create ${Poly}`}
                     onClick={() => changeTool(Tool.Draw)}
                     style={{
                         background: tool === Tool.Draw ? '#ddd' : 'transparent',
@@ -361,7 +364,7 @@ function App() {
                     <FaDrawPolygon/>
                 </button>
                 <button
-                    title="Delete mode - Click a hexagon to remove it from the overlay"
+                    title={`Delete ${Poly}`}
                     onClick={() => changeTool(Tool.Delete)}
                     style={{
                         background: tool === Tool.Delete ? '#ddd' : 'transparent',
@@ -396,7 +399,7 @@ function App() {
             ) : (
                 <div style={{ width: 400, height: 300, border: '2px dashed #aaa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <div>
-                        <p>Upload an image to get started:</p>
+                        <p>Upload Image</p>
                         <input type="file" accept="image/*" onChange={handleFileChange}/>
                     </div>
                 </div>
