@@ -1,4 +1,4 @@
-import React, {useRef, useState} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import {FaDrawPolygon, FaMousePointer, FaTrash} from 'react-icons/fa';
 
 // Tool modes
@@ -76,7 +76,8 @@ function overlayHexGrid(
 function App() {
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [tool, setTool] = useState<Tool>(Tool.Draw);
-    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const mapCanvasRef = useRef<HTMLCanvasElement>(null);
+    const polyCanvasRef = useRef<HTMLCanvasElement>(null);
     const [pixelsPerMile, setPixelsPerMile] = useState<number>(22.56);
     const [hexMiles, setHexMiles] = useState<number>(6);
     const [outlineColor, setOutlineColor] = useState<string>('black');
@@ -89,30 +90,47 @@ function App() {
         setDownloadUrl('');
     };
 
-    const handleGenerate = () => {
-        if (!imageFile || !canvasRef.current) return;
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
+    function handleGenerate() {
+        if (!imageFile || !mapCanvasRef.current || !polyCanvasRef.current) return;
+        const mapCanvas = mapCanvasRef.current;
+        const polyCanvas = polyCanvasRef.current;
+        const ctx = mapCanvas.getContext('2d');
         if (!ctx) return;
 
         const img = new Image();
         img.onload = () => {
-            canvas.width = img.width + PADDING * 2;
-            canvas.height = img.height + PADDING * 2;
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            mapCanvas.width = img.width + PADDING * 2;
+            mapCanvas.height = img.height + PADDING * 2;
+            polyCanvas.width = mapCanvas.width;
+            polyCanvas.height = mapCanvas.height;
+            ctx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
             ctx.drawImage(img, PADDING, PADDING);
             // overlay hex grid
             overlayHexGrid(ctx, img.width, img.height, pixelsPerMile, hexMiles, outlineColor);
-            drawPolygon(ctx);
+            // drawPolygon(ctx);
             // update download link
-            const url = canvas.toDataURL('image/png');
+            const url = mapCanvas.toDataURL('image/png');
             setDownloadUrl(url);
         };
         img.src = URL.createObjectURL(imageFile);
     };
 
     // Draw the uploaded image on canvas with padding
-    React.useEffect(handleGenerate, [imageFile, vertices]);
+    React.useEffect(handleGenerate, [imageFile]);
+
+    // Draw vertices and polygon on polygon canvas when vertices change
+    function drawPolygons() {
+        if (!polyCanvasRef.current) return;
+        const canvas = polyCanvasRef.current;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        drawPolygon(ctx);
+    }
+
+    useEffect(drawPolygons, [vertices]);
 
     // Draw filled polygon when 3+ vertices
     const drawPolygon = (ctx: CanvasRenderingContext2D) => {
@@ -140,8 +158,8 @@ function App() {
 
     // Handle canvas clicks for Draw tool with proper scaling
     const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-        if (tool !== Tool.Draw || !canvasRef.current) return;
-        const canvas = canvasRef.current;
+        if (tool !== Tool.Draw || !mapCanvasRef.current) return;
+        const canvas = mapCanvasRef.current;
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
@@ -228,34 +246,23 @@ function App() {
                 </button>
             </div>
 
-            {/* File Upload or Canvas */}
-            {!imageFile ? (
-                <div
-                    style={{
-                        width: 400,
-                        height: 300,
-                        border: '2px dashed #aaa',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                    }}
-                >
+            {/* Canvas Container */}
+            {imageFile ? (
+                <div style={{ position: 'relative', display: 'inline-block', border: '1px solid #ccc', maxWidth: "100%" }}>
+                    <canvas ref={mapCanvasRef} style={{ display: 'block', maxWidth: "100%" }} />
+                    <canvas
+                        ref={polyCanvasRef}
+                        onClick={handleCanvasClick}
+                        style={{ position: 'absolute', top: 0, left: 0, cursor: tool === Tool.Draw ? 'crosshair' : 'default', maxWidth: "100%" }}
+                    />
+                </div>
+            ) : (
+                <div style={{ width: 400, height: 300, border: '2px dashed #aaa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <div>
                         <p>Upload an image to get started:</p>
                         <input type="file" accept="image/*" onChange={handleFileChange}/>
                     </div>
                 </div>
-            ) : (
-                <canvas
-                    ref={canvasRef}
-                    onClick={handleCanvasClick}
-                    style={{
-                        border: '1px solid #ccc',
-                        display: 'block',
-                        margin: '0 auto',
-                        maxWidth: '100%'
-                    }}
-                />
             )}
 
             {downloadUrl && (
