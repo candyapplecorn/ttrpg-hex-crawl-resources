@@ -12,6 +12,21 @@ const PADDING = 100; // pixels of canvas padding around image
 
 interface Point { x: number; y: number }
 
+// point-in-polygon test (ray-casting)
+function pointInPolygon(point: Point, vs: Point[]) {
+    const { x, y } = point;
+    let inside = false;
+    for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+        const xi = vs[i].x, yi = vs[i].y;
+        const xj = vs[j].x, yj = vs[j].y;
+
+        const intersect = ((yi > y) !== (yj > y)) &&
+            (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+    }
+    return inside;
+}
+
 function overlayHexGrid(
     ctx: CanvasRenderingContext2D,
     width: number,
@@ -83,6 +98,23 @@ function App() {
     const [outlineColor, setOutlineColor] = useState<string>('black');
     const [downloadUrl, setDownloadUrl] = useState<string>('');
     const [vertices, setVertices] = useState<Point[]>([]);
+    const [polygons, setPolygons] = useState<Point[][]>([]);
+
+    // finalize current drawing into polygons if >=3 points
+    const finalize = () => {
+        if (vertices.length >= 3) {
+            setPolygons(prev => [...prev, vertices]);
+            setVertices([]);
+        }
+    };
+
+    // handle tool change
+    const changeTool = (newTool: Tool) => {
+        if (tool === Tool.Draw && newTool !== Tool.Draw) {
+            finalize();
+        }
+        setTool(newTool);
+    };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files || e.target.files.length === 0) return;
@@ -127,27 +159,29 @@ function App() {
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        drawPolygon(ctx);
+        [...polygons, vertices].forEach(polygon => {
+            drawPolygon(ctx, polygon);
+        })
     }
 
-    useEffect(drawPolygons, [vertices]);
+    useEffect(drawPolygons, [vertices, polygons]);
 
     // Draw filled polygon when 3+ vertices
-    const drawPolygon = (ctx: CanvasRenderingContext2D) => {
-        if (vertices.length < 1) return;
+    const drawPolygon = (ctx: CanvasRenderingContext2D, polygon: Point[]) => {
+        if (polygon.length < 1) return;
 
         // draw marker for each vertex
         ctx.fillStyle = 'red';
-        vertices.forEach(({ x, y }) => {
+        polygon.forEach(({ x, y }) => {
             ctx.beginPath();
             ctx.arc(x, y, 4, 0, Math.PI * 2);
             ctx.fill();
         });
 
-        if (vertices.length >= 3) {
+        if (polygon.length >= 3) {
             ctx.fillStyle = 'rgba(255,0,0,0.3)';
             ctx.beginPath();
-            vertices.forEach((pt, i) => {
+            polygon.forEach((pt, i) => {
                 if (i === 0) ctx.moveTo(pt.x, pt.y);
                 else ctx.lineTo(pt.x, pt.y);
             });
@@ -158,14 +192,24 @@ function App() {
 
     // Handle canvas clicks for Draw tool with proper scaling
     const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-        if (tool !== Tool.Draw || !mapCanvasRef.current) return;
         const canvas = mapCanvasRef.current;
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
         const x = (e.clientX - rect.left) * scaleX;
         const y = (e.clientY - rect.top) * scaleY;
-        setVertices(prev => [...prev, { x, y }]);
+        if (tool === Tool.Delete) {
+            // remove polygon under click
+            setPolygons(prev => prev.filter(poly => !pointInPolygon({ x, y }, poly)));
+            return;
+        }
+        if (tool === Tool.Draw) {
+            setVertices(prev => [...prev, { x, y }]);
+            return;
+        }
+        if (tool === Tool.Select) {
+            // no-op for now or could highlight
+        }
     };
 
     return (
@@ -210,7 +254,7 @@ function App() {
             <div style={{display: 'flex', alignItems: 'center', marginBottom: 10}}>
                 <button
                     title="Select mode"
-                    onClick={() => setTool(Tool.Select)}
+                    onClick={() => changeTool(Tool.Select)}
                     style={{
                         background: tool === Tool.Select ? '#ddd' : 'transparent',
                         border: 'none',
@@ -222,7 +266,7 @@ function App() {
                 </button>
                 <button
                     title="Draw mode"
-                    onClick={() => setTool(Tool.Draw)}
+                    onClick={() => changeTool(Tool.Draw)}
                     style={{
                         background: tool === Tool.Draw ? '#ddd' : 'transparent',
                         border: 'none',
@@ -234,7 +278,7 @@ function App() {
                 </button>
                 <button
                     title="Delete mode"
-                    onClick={() => setTool(Tool.Delete)}
+                    onClick={() => changeTool(Tool.Delete)}
                     style={{
                         background: tool === Tool.Delete ? '#ddd' : 'transparent',
                         border: 'none',
