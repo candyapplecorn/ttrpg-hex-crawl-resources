@@ -1,0 +1,24 @@
+# ---- Python -------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+
+# ---- Virtual‑env -------------------------------------------
+venv/
+
+# ---- IDE / Editor files ------------------------------------
+.idea/
+*.iml        # IntelliJ / PyCharm module files
+
+# ---- macOS cruft -------------------------------------------
+.DS_Store
+
+# ---- Generated images --------------------------------------
+# Keep your original JPG/PNG maps, but ignore the ones the script produces.
+assets/*_hexed.*
+
+# ---- Logs / misc -------------------------------------------
+*.log
