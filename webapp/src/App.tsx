@@ -1,5 +1,5 @@
 import React, {RefObject, useEffect, useRef, useState} from 'react';
-import {FaCheck, FaDrawPolygon, FaMousePointer, FaTrash} from 'react-icons/fa';
+import {FaCheck, FaClipboard, FaDrawPolygon, FaMousePointer, FaTrash} from 'react-icons/fa';
 
 // Tool modes
 enum Tool {
@@ -14,6 +14,25 @@ interface Point { x: number; y: number }
 
 const Poly: "Polygon" = "Polygon";
 const Hex: "Hexagon" = "Hexagon";
+
+// Clipboard paste handler: reads first image from clipboard
+async function readImageFromClipboard(): Promise<File | null> {
+    try {
+        // @ts-ignore navigator.clipboard.read not in older TS defs
+        const items = await (navigator.clipboard as any).read();
+        for (const item of items) {
+            for (const type of item.types) {
+                if (type.startsWith('image/')) {
+                    const blob: Blob = await item.getType(type);
+                    return new File([blob], `clipboard.${type.split('/')[1]}`, { type });
+                }
+            }
+        }
+    } catch (err) {
+        console.error('Clipboard read failed', err);
+    }
+    return null;
+}
 
 // point-in-polygon test (ray-casting)
 function pointInPolygon(point: Point, vs: Point[]) {
@@ -292,6 +311,25 @@ function App() {
         return { left: (minX - offset) * scale, top: (minY - offset) * scale };
     }, [vertices]);
 
+    // Paste from clipboard
+    const handlePaste = async () => {
+        const file = await readImageFromClipboard();
+        if (file) setImageFile(file);
+    };
+
+    // Prompt user on any page-level paste
+    useEffect(() => {
+        const onGlobalPaste = async (e: ClipboardEvent) => {
+            // check for image in clipboard data
+            if (e.clipboardData && Array.from(e.clipboardData.items).some(item => item.type.startsWith('image/'))) {
+                const ok = window.confirm('Load image from clipboard?');
+                if (ok) await handlePaste();
+            }
+        };
+        window.addEventListener('paste', onGlobalPaste);
+        return () => window.removeEventListener('paste', onGlobalPaste);
+    }, []);
+
     return (
         <div style={{padding: 20, fontFamily: 'sans-serif'}}>
             <h1>Overlay {Hex} Tool</h1>
@@ -401,6 +439,10 @@ function App() {
                     <div>
                         <p>Upload Image</p>
                         <input type="file" accept="image/*" onChange={handleFileChange}/>
+                        <p style={{ fontStyle: "italic"}}>or</p>
+                        <button onClick={handlePaste} style={{marginLeft:8}} title="Paste image from clipboard">
+                            <FaClipboard /> Paste from Clipboard
+                        </button>
                     </div>
                 </div>
             )}
