@@ -129,6 +129,100 @@ function overlayHexGrid(
     }
 }
 
+
+// compute grid coords for each hex (flat‑top, identical to overlayHexGrid loops)
+interface Hex { row: number; col: number; x: number; y: number }
+
+type IHexesRowsCols = { hexes: Hex[]; rowCount: number; colCount: number };
+function computeHexGrid(
+    width: number,
+    height: number,
+    ppm: number,
+    miles: number
+): { hexes: Hex[]; rowCount: number; colCount: number } {
+    const hexRadius = ppm * miles;
+    const hexWidth = 2 * hexRadius;
+    const hexHeight = Math.sqrt(3) * hexRadius;
+    const hSpacing = 0.75 * hexWidth;
+    const vSpacing = hexHeight;
+    const hexes: Hex[] = [];
+    let row = -1;
+    // start half a row up to match overlay offset
+    for (let y = -vSpacing/4; y < height + vSpacing; y += vSpacing/4) {
+        row++;
+        const xOffset = row % 2 === 1 ? hSpacing / 2 : 0;
+        let col = 0;
+        for (let x = xOffset; x < width + hSpacing; x += hSpacing) {
+            hexes.push({ row, col, x, y });
+            col++;
+        }
+    }
+    // maximum columns across any row
+    const colCount = Math.max(
+        ...new Set(hexes.map(h => h.col)).values()
+    );
+    // rowCount is last row index + 1
+    const rowCount = row + 1;
+    return { hexes, rowCount, colCount };
+}
+
+// draw axial-style coordinates centered on middle hex
+function annotateHexCoords(
+    ctx: CanvasRenderingContext2D,
+    grid: ReturnType<typeof computeHexGrid>,
+    ppm: number,
+    miles: number,
+    polygonsToSkip: Point[][] = [],
+    polygonsToInclude: Point[][] = []
+) {
+    const { hexes, rowCount, colCount } = grid;
+    // recompute height to offset labels
+    const hexRadius = ppm * miles;
+    const hexHeight = Math.sqrt(3) * hexRadius;
+    const yOffset = hexHeight / 8;
+    const centerRow = Math.floor(rowCount / 2);
+    const centerCol = Math.floor(colCount / 2);
+    ctx.fillStyle = 'black';
+    ctx.font = '24px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    hexes.forEach(({ row, col, x, y }) => {
+        const points: Point[] = []
+
+        // draw one hexagon
+        for (let i = 0; i < 6; i++) {
+            // flat‑top: start at angle=0° (pointing right) and go CCW 60° steps
+            const theta = (i * 60) * (Math.PI / 180);
+
+            let px = x + hexRadius * Math.cos(theta);
+            let py = y + yOffset + hexRadius * Math.sin(theta);
+
+            // per‑hex vertical shift
+            if (col % 2 === 0) {
+                py += hexHeight / 2;
+            }
+
+            points.push({ x: px, y: py });
+        }
+
+
+        const shouldDrawHex = points.every(pt => {
+            if (polygonsToSkip.some(polygon => pointInPolygon(pt, polygon))) {
+                if (polygonsToInclude.some(polygon => pointInPolygon(pt, polygon))) {
+                    return true;
+                }
+                return false;
+            }
+            return true;
+        });
+        if (!shouldDrawHex) return;
+
+        const q = col - centerCol;
+        const r = centerRow - row;
+        ctx.fillText(`${q},${r}`, x, y + yOffset);
+    });
+}
+
 function App() {
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [tool, setTool] = useState<Tool>(Tool.Draw);
@@ -142,6 +236,7 @@ function App() {
     const [vertices, setVertices] = useState<Point[]>([]);
     const [polygons, setPolygons] = useState<Point[][]>([]);
     const [selectedPolygons, setSelectedPolygons] = useState<Point[][] | null>(null);
+    const [shouldDrawCoordinates, setShouldDrawCoordinates] = useState<boolean>(false);
 
     // finalize current drawing into polygons if >=3 points
     const finalize = () => {
@@ -185,8 +280,8 @@ function App() {
         const mapCanvas = mapCanvasRef.current;
         const polyCanvas = polyCanvasRef.current;
         const selectionCanvas = selectionCanvasRef.current;
-        const ctx = mapCanvas.getContext('2d');
-        if (!ctx) return;
+        const mapCtx = mapCanvas.getContext('2d');
+        if (!mapCtx) return;
 
         const img = new Image();
         img.onload = () => {
@@ -196,10 +291,20 @@ function App() {
             polyCanvas.height = mapCanvas.height;
             selectionCanvas.width = mapCanvas.width;
             selectionCanvas.height = mapCanvas.height;
-            ctx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
-            ctx.drawImage(img, PADDING, PADDING);
+            mapCtx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
+            mapCtx.drawImage(img, PADDING, PADDING);
             // overlay hex grid
-            overlayHexGrid(ctx, img.width, img.height, pixelsPerMile, hexMiles, outlineColor, polygons, selectedPolygons ?? []);
+            overlayHexGrid(mapCtx, img.width, img.height, pixelsPerMile, hexMiles, outlineColor, polygons, selectedPolygons ?? []);
+
+            if (shouldDrawCoordinates) {
+                // @TODO - WIP - Make overlay hex grid instead return a list of all the hexagons it calculated, include a boolean on whether it actually drew it or not.
+                // Then feed this list int annotateHexCoords or something similar to properly only place coordinates inside the hexes that were drawn.
+                // Then, add UI features for a checkbox to show coords or not, plus some inputs for the text color, font style, and coord style.
+                // @TODO - Also todo - add a different canvas for hexagons and coordinates, possibly this will help with performance?
+                const hexesRowsCols: IHexesRowsCols = computeHexGrid(mapCanvas.width, mapCanvas.height, pixelsPerMile, hexMiles);
+                annotateHexCoords(mapCtx, hexesRowsCols, pixelsPerMile, hexMiles, polygons, selectedPolygons ?? []);
+            }
+
             if (tool === Tool.Draw) drawPolygons();
             // update download link
             const url = mapCanvas.toDataURL('image/png');
@@ -209,7 +314,7 @@ function App() {
     }
 
     // Draw the uploaded image on canvas with padding
-    React.useEffect(handleGenerate, [imageFile]);
+    React.useEffect(handleGenerate, [imageFile, shouldDrawCoordinates]);
 
     // Draw vertices and polygon on polygon canvas when vertices change
     function drawPolygons(canvasRef: RefObject<HTMLCanvasElement> = polyCanvasRef, listOfPolygons: Point[][] = polygons, polygonsToOmit: Point[][] | null = selectedPolygons, color: string | null = null) {
@@ -331,11 +436,17 @@ function App() {
     }, []);
 
     return (
-        <div style={{padding: 20, fontFamily: 'sans-serif'}}>
-            <h1>Overlay {Hex} Tool</h1>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', marginTop: 10 }}>
-                <input type="file" accept="image/*" onChange={handleFileChange}/>
-                <div style={{marginTop: 10}}>
+        <div style={{padding: 20, fontFamily: 'sans-serif', margin: "0 auto"}}>
+            <div style={{position: "absolute", top: "10px", right: "10px" }} >
+                <a href='https://ko-fi.com/S6S41IQUCB' target='_blank'><img height='36' style={{ border: "0px", height: "36px" }} src='https://storage.ko-fi.com/cdn/kofi6.png?v=6' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between"}}>
+                <h1 style={{ margin: 0}}>Overlay {Hex} Tool</h1>
+            </div>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
+                <input style={{ display: imageFile ? 'inherit' : 'none'}} type="file" accept="image/*" onChange={handleFileChange}/>
+                <div style={{ display: imageFile ? 'inherit' : 'none'}}>
                     <label>
                         Pixels per mile:{' '}
                         <input
@@ -345,7 +456,7 @@ function App() {
                         />
                     </label>
                 </div>
-                <div style={{marginTop: 10}}>
+                <div style={{ display: imageFile ? 'inherit' : 'none'}}>
                     <label>
                         Hex radius (miles):{' '}
                         <input
@@ -355,7 +466,7 @@ function App() {
                         />
                     </label>
                 </div>
-                <div style={{marginTop: 10}}>
+                <div style={{ display: imageFile ? 'inherit' : 'none'}}>
                     <label>
                         Outline color:{' '}
                         <input
@@ -365,18 +476,28 @@ function App() {
                         />
                     </label>
                 </div>
-                <button style={{marginTop: 20}} onClick={() => { handleGenerate(); }} disabled={(vertices.length > 0) || !imageFile}>
+                <div style={{ display: imageFile ? 'inherit' : 'none'}} className="hoverWarning" title={`This feature isn't finished.\nIt doesn't work with the ${Poly} tool.`}>
+                    <label>
+                        <input
+                            type="checkbox"
+                            checked={shouldDrawCoordinates}
+                            onChange={e => setShouldDrawCoordinates(e.target.checked)}
+                        />
+                        🚧 Show Coordinates (<i>WIP</i>)
+                    </label>
+                </div>
+                <button style={{ display: imageFile ? 'inherit' : 'none'}} onClick={() => { handleGenerate(); }} disabled={(vertices.length > 0) || !imageFile}>
                     Generate {Hex}s
                 </button>
                 {vertices.length > 0 && (
-                    <button style={{marginTop: 20}} onClick={() => { finalize(); }}>
+                    <button onClick={() => { finalize(); }}>
                         Finalize {Poly}
                     </button>
                 )}
             </div>
 
             {/* Toolbar */}
-            <div style={{display: 'flex', alignItems: 'center', marginBottom: 10}}>
+            <div style={{ alignItems: 'center', marginBottom: 10, display: imageFile ? 'flex' : 'none'}}>
                 <button
                     disabled={polygons.length === 0}
                     title={`Invert ${Poly}`}
